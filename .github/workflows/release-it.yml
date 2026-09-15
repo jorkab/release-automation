@@ -1,0 +1,44 @@
+name: Release It
+
+on:
+  workflow_call:
+    inputs:
+      node-version-file:
+        description: "Path to the node version file (e.g. .nvmrc)"
+        type: string
+        default: ".nvmrc"
+      config-file:
+        description: "Path to the release-it config file"
+        type: string
+        default: "release.config.js"
+    secrets:
+      release-token:
+        description: "Token used for checkout, tagging, and creating the GitHub release"
+        required: true
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.release-token }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ${{ inputs.node-version-file }}
+
+      - run: npm ci
+
+      - run: npx release-it --ci --config ${{ inputs.config-file }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.release-token }}
+          GIT_AUTHOR_NAME: "github-actions[bot]"
+          GIT_AUTHOR_EMAIL: "github-actions[bot]@users.noreply.github.com"
+          GIT_COMMITTER_NAME: "github-actions[bot]"

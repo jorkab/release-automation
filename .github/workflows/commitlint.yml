@@ -1,0 +1,34 @@
+name: Commitlint
+
+on:
+  workflow_call:
+    inputs:
+      node-version-file:
+        description: "Path to the node version file (e.g. .nvmrc)"
+        type: string
+        default: ".nvmrc"
+      config-file:
+        description: "Path to the commitlint config file"
+        type: string
+        default: "release.config.js"
+
+permissions:
+  contents: read
+
+jobs:
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: ${{ inputs.node-version-file }}
+
+      - run: npm ci
+
+      - run: npx commitlint --config ${{ inputs.config-file }} --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+        env:
+          ACTION_CONFIG: "commitlint"
