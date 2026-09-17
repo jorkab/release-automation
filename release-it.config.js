@@ -1,4 +1,4 @@
-const conventionalCommitTypes = require('./commit-types');
+const conventionalCommitTypes = require('./commit-conventions.types');
 
 const releaseIt = {
     "git":{
@@ -24,5 +24,4 @@ const releaseIt = {
         }
     }
 }
-
 module.exports = releaseIt;

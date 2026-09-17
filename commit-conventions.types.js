@@ -1,5 +1,3 @@
-// Single source of truth for which commit types are valid conventional commits.
-// Both commitlint (type-enum rule) and release-it (changelog preset) read from this array.
 const conventionalCommitTypes = [
     {"type": "feat", "section": "Features"},
     {"type": "fix", "section": "Bug Fixes"},

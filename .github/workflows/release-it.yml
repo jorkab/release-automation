@@ -10,7 +10,7 @@ on:
       config-file:
         description: "Path to the release-it config file"
         type: string
-        default: "release.config.js"
+        default: "release-it.config.js"
     secrets:
       release-token:
         description: "Token used for checkout, tagging, and creating the GitHub release"
