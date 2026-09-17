@@ -10,7 +10,7 @@ on:
       config-file:
         description: "Path to the commitlint config file"
         type: string
-        default: "release.config.js"
+        default: "commit-lint.config.js"
 
 permissions:
   contents: read
@@ -29,6 +29,26 @@ jobs:
 
       - run: npm ci
 
-      - run: npx commitlint --config ${{ inputs.config-file }} --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+      - run: |
+          FROM_SHA="${{ github.event.pull_request.base.sha || github.event.before }}"
+          TO_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+
+          if [ -z "$FROM_SHA" ] || [ "$FROM_SHA" = "0000000000000000000000000000000000000000" ]; then
+            FROM_SHA=$(git rev-list --max-count=2 HEAD | tail -n 1)
+          fi
+
+          if [ -z "$FROM_SHA" ] || [ "$FROM_SHA" = "$TO_SHA" ]; then
+            if git rev-parse --verify "${TO_SHA}^" >/dev/null 2>&1; then
+              FROM_SHA="${TO_SHA}^"
+            else
+              FROM_SHA=""
+            fi
+          fi
+
+          if [ -n "$FROM_SHA" ]; then
+            npx commitlint --config "${{ inputs.config-file }}" --from "$FROM_SHA" --to "$TO_SHA" --verbose
+          else
+            npx commitlint --config "${{ inputs.config-file }}" --last --verbose
+          fi
         env:
           ACTION_CONFIG: "commitlint"
