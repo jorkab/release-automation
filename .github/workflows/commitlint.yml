@@ -8,9 +8,9 @@ on:
         type: string
         default: ".nvmrc"
       config-file:
-        description: "Path to the commitlint config file"
+        description: "Optional path to commitlint config in caller repo; empty uses shared default from jorkab/release-automation"
         type: string
-        default: "commit-lint.config.js"
+        default: ""
 
 permissions:
   contents: read
@@ -27,9 +27,19 @@ jobs:
         with:
           node-version-file: ${{ inputs.node-version-file }}
 
-      - run: npm ci
+      - uses: actions/checkout@v7
+        with:
+          repository: jorkab/release-automation
+          path: .release-automation
+
+      - run: npm ci --prefix .release-automation
 
       - run: |
+          CONFIG_FILE="${{ inputs.config-file }}"
+          if [ -z "$CONFIG_FILE" ]; then
+            CONFIG_FILE=".release-automation/commit-lint.config.js"
+          fi
+
           FROM_SHA="${{ github.event.pull_request.base.sha || github.event.before }}"
           TO_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
 
@@ -46,9 +56,9 @@ jobs:
           fi
 
           if [ -n "$FROM_SHA" ]; then
-            npx commitlint --config "${{ inputs.config-file }}" --from "$FROM_SHA" --to "$TO_SHA" --verbose
+            npx --prefix .release-automation commitlint --config "$CONFIG_FILE" --from "$FROM_SHA" --to "$TO_SHA" --verbose
           else
-            npx commitlint --config "${{ inputs.config-file }}" --last --verbose
+            npx --prefix .release-automation commitlint --config "$CONFIG_FILE" --last --verbose
           fi
         env:
           ACTION_CONFIG: "commitlint"
