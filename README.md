@@ -142,6 +142,46 @@ Then pass the file to the reusable workflow with `config-file: commitlint.config
 (or `release-it.config.js`). Everything not overridden keeps coming from the shared
 default in `.release-automation/`.
 
+### Adding new commit types
+
+`commit-conventions.types.js` is the single source of truth for allowed types, but it
+feeds `type-enum` (commitlint) and the changelog `preset.types` (release-it)
+differently, so extending it takes a different shape on each side.
+
+**commitlint** replaces a rule wholesale on override — there's no array-merge for
+`rules`. To add a type you require the base list and build the full list yourself:
+
+```js
+// commitlint.config.js in the consuming repo
+const baseTypes = require('./.release-automation/commit-conventions.types.js');
+const allTypes = [...baseTypes, { type: 'deps', section: 'Dependencies' }];
+
+module.exports = {
+  extends: ['./.release-automation/commit-lint.config.js'],
+  rules: {
+    'type-enum': [2, 'always', allTypes.map((t) => t.type)]
+  }
+};
+```
+
+**release-it** deep-merges config on `extends` (via `c12`) and *concatenates arrays*,
+so `preset.types` only needs the new entries — listing the base ones again would
+duplicate them in the changelog:
+
+```js
+// release-it.config.js in the consuming repo
+module.exports = {
+  extends: './.release-automation/release-it.config.js',
+  plugins: {
+    '@release-it/conventional-changelog': {
+      preset: {
+        types: [{ type: 'deps', section: 'Dependencies' }] // only the new ones
+      }
+    }
+  }
+};
+```
+
 ## Conventional commit types
 
 The accepted types (defined in `commit-conventions.types.js`):
