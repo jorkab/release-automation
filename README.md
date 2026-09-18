@@ -209,6 +209,31 @@ The accepted types (defined in `commit-conventions.types.js`):
 - Skip npm publish.
 - Write changelog entries to `CHANGELOG.md` using conventional commits.
 
+## Recommended branching flow
+
+This stack assumes **trunk-based development**: a single long-lived `main` branch,
+no `develop`/`release` branches. Every change lands through a short-lived feature or
+fix branch.
+
+- **One branch per feature/fix**, cut from `main`.
+- **Squash merge only** — on GitHub, set the merge button (or repo setting) to
+  "Squash and merge". Never "Create a merge commit" or "Rebase and merge": both
+  keep every raw commit on `main`, which breaks the one-commit-per-feature history
+  `release-it` relies on to build the changelog.
+- **The squash commit's title is a Conventional Commit message** (e.g.
+  `feat: add checkout retry`), because that's the only commit `release-it.yml`
+  sees on `main` when it computes the version bump and changelog entry for that
+  change.
+- Keep the commits **inside** the branch conventional-formatted too, not just the
+  final PR title. `commitlint.yml` lints every raw commit in the PR's range before
+  merge — a messy "wip" commit fails that check even if the PR title is clean.
+  Practically: commit small, commit with a real type/scope from the start, and
+  amend instead of piling up throwaway commits.
+- Result on `main`: one squashed, conventional commit per merged PR — exactly what
+  `release-it.yml` needs to pick the right version bump (`feat` → minor, `fix`/
+  `perf` → patch, breaking change → major) and file it under the right changelog
+  section from `commit-conventions.types.js`.
+
 ## Versioning
 
 Tags `v1` and `v2` are the anchor points consumers reference in `uses: ...@vN`. Any
