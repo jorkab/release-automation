@@ -1,29 +1,110 @@
 # release-automation
 
-Reusable commit and release conventions for JavaScript repositories.
-This repository centralizes commitlint and release-it configuration so teams can enforce consistent commit types and generate predictable changelogs.
+A collection of GitHub Actions **reusable workflows** (`workflow_call`) for standardizing
+commits and releases across JavaScript repositories: one lints commit messages on every
+PR, the other cuts a release (tag, changelog, GitHub release) on merge to `main`.
 
-## Quick start
+This repo is **not a standalone action and not an installable package**. There is no
+`npm install` that pulls it into another project, and it is not meant to run on its own:
+the two workflows are coupled to each other (one gates the merge, the other publishes
+the release) and only make sense **invoked** from the consuming repository.
 
-1. Install dependencies.
-2. Point your tooling to the config files in this repository.
-3. Run commitlint and release-it from your target project.
+## What's in this repo
 
-```bash
-npm install
+| File | Role |
+|---|---|
+| `.github/workflows/commitlint.yml` | Reusable workflow: runs commitlint against a PR's commit range. |
+| `.github/workflows/release-it.yml` | Reusable workflow: runs `release-it` (tag, changelog, GitHub release) on push to `main`. |
+| `commit-conventions.types.js` | Single source of truth for allowed commit types and their changelog sections. |
+| `commit-lint.config.js` | commitlint config, built on top of `commit-conventions.types.js`. |
+| `release-it.config.js` | release-it config, built on top of `commit-conventions.types.js`. |
+
+The three `.js` files are the shared defaults. Each reusable workflow checks out this
+repo into `.release-automation` and runs commitlint/release-it against
+`.release-automation/commit-lint.config.js` / `.release-automation/release-it.config.js`
+unless the caller sets the `config-file` input — in that case, the path is resolved in
+the caller's own checkout instead, so the consuming repo only needs a config file of its
+own when it wants to diverge from the shared defaults.
+
+## How it's used
+
+The consuming repo doesn't install anything from here. It defines its own thin workflow
+files that declare the real trigger and delegate the whole job with `uses:`.
+
+`.github/workflows/commitlint.yml` in the consuming repo:
+
+```yaml
+name: Lint Commit Messages
+
+on:
+  pull_request
+
+permissions:
+  contents: read
+
+jobs:
+  commitlint:
+    uses: jorkab/release-automation/.github/workflows/commitlint.yml@v2
 ```
 
-## What is included
+`.github/workflows/release-it.yml` in the consuming repo:
 
-| File | Purpose |
-|------|---------|
-| `commit-conventions.types.js` | Single source of truth for allowed conventional commit types and changelog sections. |
-| `commit-lint.config.js` | commitlint config using `type-enum` from the shared types list. |
-| `release-it.config.js` | release-it config with GitHub release creation and conventional changelog generation. |
+```yaml
+name: Release it
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  release:
+    uses: jorkab/release-automation/.github/workflows/release-it.yml@v2
+    secrets:
+      release-token: ${{ secrets.RELEASE_TOKEN }}
+```
+
+Key points from the example:
+
+- The **trigger** (`pull_request`, `push` to `main`) and the `permissions:` are owned by
+  the consuming repo, not this one.
+- **Pinning a version** (`@v2`) is mandatory in practice: point at the tag, never at
+  `main`, so future changes here don't silently break your pipeline.
+- `release-token` is a secret owned by the consumer (here, `RELEASE_TOKEN`) mapped to
+  the name the reusable workflow expects. It must be a PAT with write access — the
+  default `GITHUB_TOKEN` isn't enough if the release commit needs to trigger other
+  workflows.
+
+## Contract of each reusable workflow
+
+### `commitlint.yml`
+
+| Input | Default | Description |
+|---|---|---|
+| `node-version-file` | `.nvmrc` | Path to the Node version file, resolved in the consuming repo. |
+| `config-file` | *(empty)* | Path to a commitlint config in the consuming repo. Leave empty to use the shared `.release-automation/commit-lint.config.js` default. |
+
+Resolves the commit range from the pull request's `base.sha`/`head.sha`, or from
+`github.event.before` on a push event; falls back to linting the last commit if no
+usable range is found.
+
+### `release-it.yml`
+
+| Input / Secret | Default | Description |
+|---|---|---|
+| `node-version-file` | `.nvmrc` | Same as above. |
+| `config-file` | *(empty)* | Path to a release-it config in the consuming repo. Leave empty to use the shared `.release-automation/release-it.config.js` default. |
+| `secrets.release-token` (required) | — | Token used for checkout, tagging, and creating the GitHub release. |
+
+Runs `release-it --ci`, which requires a clean working tree and the `main` branch.
 
 ## Conventional commit types
 
-The accepted types are:
+The accepted types (defined in `commit-conventions.types.js`):
 
 - `feat`
 - `fix`
@@ -39,7 +120,7 @@ The accepted types are:
 
 ## Release behavior
 
-`release-it.config.js` is configured to:
+`release-it.config.js` configures `release-it.yml` to:
 
 - Require a clean working tree.
 - Require releases from `main`.
@@ -48,18 +129,8 @@ The accepted types are:
 - Skip npm publish.
 - Write changelog entries to `CHANGELOG.md` using conventional commits.
 
-## Typical release command
+## Versioning
 
-Run this from the project that consumes these conventions:
-
-```bash
-npx release-it --config ./release-it.config.js
-```
-
-## Validation command
-
-Use commitlint against the shared config:
-
-```bash
-npx commitlint --config ./commit-lint.config.js --from HEAD~1 --to HEAD
-```
+Tags `v1` and `v2` are the anchor points consumers reference in `uses: ...@vN`. Any
+breaking change to an input, a secret, or a config file's default name requires a new
+tag — never rewrite an existing one.
