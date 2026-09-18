@@ -102,6 +102,86 @@ usable range is found.
 
 Runs `release-it --ci`, which requires a clean working tree and the `main` branch.
 
+## Overriding or extending the shared config
+
+Both workflows check out this repo into `.release-automation/` as a sibling of the
+consuming repo's own checkout, so that path is a stable contract you can point at,
+not just an internal detail. There are two ways to diverge from the shared defaults
+via the `config-file` input:
+
+- **Full replace** — point `config-file` at your own config and ignore the shared
+  one entirely.
+- **Partial override** — write a config that `extends` the shared default and only
+  overrides what you need. Both `commitlint` and `release-it` resolve `extends`
+  against relative paths, not just npm package names, so this works without
+  publishing anything.
+
+`commitlint.config.js` in the consuming repo:
+
+```js
+module.exports = {
+  extends: ['./.release-automation/commit-lint.config.js'],
+  rules: {
+    'subject-case': [0] // turn off a rule from the shared default
+  }
+};
+```
+
+`release-it.config.js` (or `.release-it.js`) in the consuming repo:
+
+```js
+module.exports = {
+  extends: './.release-automation/release-it.config.js',
+  git: {
+    requireBranch: 'develop' // override one key, keep the rest
+  }
+};
+```
+
+Then pass the file to the reusable workflow with `config-file: commitlint.config.js`
+(or `release-it.config.js`). Everything not overridden keeps coming from the shared
+default in `.release-automation/`.
+
+### Adding new commit types
+
+`commit-conventions.types.js` is the single source of truth for allowed types, but it
+feeds `type-enum` (commitlint) and the changelog `preset.types` (release-it)
+differently, so extending it takes a different shape on each side.
+
+**commitlint** replaces a rule wholesale on override — there's no array-merge for
+`rules`. To add a type you require the base list and build the full list yourself:
+
+```js
+// commitlint.config.js in the consuming repo
+const baseTypes = require('./.release-automation/commit-conventions.types.js');
+const allTypes = [...baseTypes, { type: 'deps', section: 'Dependencies' }];
+
+module.exports = {
+  extends: ['./.release-automation/commit-lint.config.js'],
+  rules: {
+    'type-enum': [2, 'always', allTypes.map((t) => t.type)]
+  }
+};
+```
+
+**release-it** deep-merges config on `extends` (via `c12`) and *concatenates arrays*,
+so `preset.types` only needs the new entries — listing the base ones again would
+duplicate them in the changelog:
+
+```js
+// release-it.config.js in the consuming repo
+module.exports = {
+  extends: './.release-automation/release-it.config.js',
+  plugins: {
+    '@release-it/conventional-changelog': {
+      preset: {
+        types: [{ type: 'deps', section: 'Dependencies' }] // only the new ones
+      }
+    }
+  }
+};
+```
+
 ## Conventional commit types
 
 The accepted types (defined in `commit-conventions.types.js`):
@@ -128,6 +208,31 @@ The accepted types (defined in `commit-conventions.types.js`):
 - Create GitHub releases.
 - Skip npm publish.
 - Write changelog entries to `CHANGELOG.md` using conventional commits.
+
+## Recommended branching flow
+
+This stack assumes **trunk-based development**: a single long-lived `main` branch,
+no `develop`/`release` branches. Every change lands through a short-lived feature or
+fix branch.
+
+- **One branch per feature/fix**, cut from `main`.
+- **Squash merge only** — on GitHub, set the merge button (or repo setting) to
+  "Squash and merge". Never "Create a merge commit" or "Rebase and merge": both
+  keep every raw commit on `main`, which breaks the one-commit-per-feature history
+  `release-it` relies on to build the changelog.
+- **The squash commit's title is a Conventional Commit message** (e.g.
+  `feat: add checkout retry`), because that's the only commit `release-it.yml`
+  sees on `main` when it computes the version bump and changelog entry for that
+  change.
+- Keep the commits **inside** the branch conventional-formatted too, not just the
+  final PR title. `commitlint.yml` lints every raw commit in the PR's range before
+  merge — a messy "wip" commit fails that check even if the PR title is clean.
+  Practically: commit small, commit with a real type/scope from the start, and
+  amend instead of piling up throwaway commits.
+- Result on `main`: one squashed, conventional commit per merged PR — exactly what
+  `release-it.yml` needs to pick the right version bump (`feat` → minor, `fix`/
+  `perf` → patch, breaking change → major) and file it under the right changelog
+  section from `commit-conventions.types.js`.
 
 ## Versioning
 
