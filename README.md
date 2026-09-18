@@ -102,6 +102,46 @@ usable range is found.
 
 Runs `release-it --ci`, which requires a clean working tree and the `main` branch.
 
+## Overriding or extending the shared config
+
+Both workflows check out this repo into `.release-automation/` as a sibling of the
+consuming repo's own checkout, so that path is a stable contract you can point at,
+not just an internal detail. There are two ways to diverge from the shared defaults
+via the `config-file` input:
+
+- **Full replace** — point `config-file` at your own config and ignore the shared
+  one entirely.
+- **Partial override** — write a config that `extends` the shared default and only
+  overrides what you need. Both `commitlint` and `release-it` resolve `extends`
+  against relative paths, not just npm package names, so this works without
+  publishing anything.
+
+`commitlint.config.js` in the consuming repo:
+
+```js
+module.exports = {
+  extends: ['./.release-automation/commit-lint.config.js'],
+  rules: {
+    'subject-case': [0] // turn off a rule from the shared default
+  }
+};
+```
+
+`release-it.config.js` (or `.release-it.js`) in the consuming repo:
+
+```js
+module.exports = {
+  extends: './.release-automation/release-it.config.js',
+  git: {
+    requireBranch: 'develop' // override one key, keep the rest
+  }
+};
+```
+
+Then pass the file to the reusable workflow with `config-file: commitlint.config.js`
+(or `release-it.config.js`). Everything not overridden keeps coming from the shared
+default in `.release-automation/`.
+
 ## Conventional commit types
 
 The accepted types (defined in `commit-conventions.types.js`):
